@@ -1,0 +1,7 @@
+{
+  "name": "beep-path-check",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Know before you pay: AI skill path + certificate-worth check for Tier 2/3 students",
+  "engines": { "node": ">=18" }
+}

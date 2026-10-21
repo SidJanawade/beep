@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Path Check - know before you pay</title>
+<meta name="description" content="Tell us your branch and goal. Get an honest, free-first skill path and know if a paid certificate is worth it.">
+<style>
+  :root { --bg:#faf7f2; --card:#fff; --ink:#1c1b1a; --muted:#6b665f; --line:#e7e1d8; --accent:#e8590c; --good:#2b8a3e; --warn:#b36b00; --bad:#c92a2a; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background:var(--bg); color:var(--ink); line-height:1.5; }
+  main { max-width: 720px; margin: 0 auto; padding: 20px 16px 60px; }
+  h1 { font-size: 1.6rem; margin: 8px 0 4px; }
+  .sub { color: var(--muted); margin: 0 0 20px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px; margin-bottom: 14px; }
+  label { display:block; font-weight:600; font-size:.9rem; margin: 12px 0 4px; }
+  input, select, textarea { width:100%; padding:11px 12px; border:1px solid var(--line); border-radius:10px; font: inherit; background:#fff; }
+  .row { display:grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  button { font: inherit; cursor:pointer; border:0; border-radius:10px; padding: 12px 16px; font-weight:700; }
+  .primary { background: var(--accent); color:#fff; width:100%; margin-top:16px; }
+  .primary:disabled { opacity:.6; cursor: wait; }
+  .ghost { background:#f1ece4; color: var(--ink); }
+  .err { color: var(--bad); margin-top: 10px; font-weight:600; }
+  h2 { font-size: 1.1rem; margin: 0 0 8px; }
+  .skill { border-top: 1px solid var(--line); padding: 12px 0; }
+  .skill:first-of-type { border-top: 0; }
+  .pill { display:inline-block; font-size:.75rem; font-weight:700; padding:2px 8px; border-radius:99px; margin-left:6px; }
+  .no { background:#e6f4ea; color: var(--good); }
+  .maybe { background:#fff3d6; color: var(--warn); }
+  .yes { background:#fde8e8; color: var(--bad); }
+  .muted { color: var(--muted); font-size:.92rem; }
+  ul { padding-left: 20px; margin: 6px 0; }
+  .note { font-size:.8rem; color: var(--muted); margin-top: 18px; }
+  .hidden { display:none; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Path Check</h1>
+  <p class="sub">Know what to learn, and whether a paid certificate is worth it, <b>before</b> you pay.</p>
+
+  <form id="form" class="card">
+    <label for="branch">Your branch / stream</label>
+    <input id="branch" placeholder="e.g. Mechanical, BCom, BCA" maxlength="80" required>
+
+    <div class="row">
+      <div>
+        <label for="year">Year</label>
+        <select id="year"><option>1st year</option><option>2nd year</option><option selected>3rd year</option><option>Final year</option><option>Passed out</option></select>
+      </div>
+      <div>
+        <label for="hours">Study hours / week</label>
+        <select id="hours"><option>3-5</option><option selected>6-10</option><option>11-20</option><option>20+</option></select>
+      </div>
+    </div>
+
+    <label for="goal">What do you want to become?</label>
+    <input id="goal" placeholder="e.g. data analyst, first internship in marketing" maxlength="200" required>
+
+    <label for="known">What do you already know? (optional)</label>
+    <input id="known" placeholder="e.g. basic Excel, some Python" maxlength="200">
+
+    <div class="row">
+      <div>
+        <label for="budget">Money you can spend</label>
+        <select id="budget"><option selected>Rs 0 (free only)</option><option>Up to Rs 500</option><option>Up to Rs 2000</option><option>More than Rs 2000</option></select>
+      </div>
+      <div>
+        <label for="language">Language</label>
+        <select id="language"><option>English</option><option>Hinglish</option><option>Hindi</option></select>
+      </div>
+    </div>
+
+    <button id="go" class="primary" type="submit">Get my honest path</button>
+    <div id="err" class="err hidden"></div>
+  </form>
+
+  <section id="out" class="hidden"></section>
+
+  <p class="note">Path Check is an AI tool and can be wrong. It does not know any company's current prices or what is inside a specific course. Always check the price and what is included on the checkout screen before you pay.</p>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const sid = Math.random().toString(36).slice(2, 12);
+const BEEP_URL = "https://www.eventbeep.com/";
+
+function track(event) {
+  try { navigator.sendBeacon("/api/track", new Blob([JSON.stringify({ event, sid })], { type: "application/json" })); } catch (_) {}
+}
+track("page_view");
+
+// Small helper: build elements safely (textContent only, so AI output can never inject HTML).
+function el(tag, props = {}, ...kids) {
+  const n = document.createElement(tag);
+  Object.assign(n, props);
+  kids.forEach((k) => n.append(k));
+  return n;
+}
+const card = (title, ...kids) => el("div", { className: "card" }, el("h2", { textContent: title }), ...kids);
+const list = (items) => el("ul", {}, ...(items || []).map((t) => el("li", { textContent: String(t) })));
+
+function render(plan) {
+  const out = $("out");
+  out.replaceChildren();
+
+  out.append(card("Your honest read", el("p", { textContent: plan.summary || "" }),
+    el("p", { className: "muted", textContent: "Realistic roles: " + (plan.target_roles || []).join(" | ") })));
+
+  const skills = el("div");
+  (plan.skills || []).forEach((s) => {
+    const verdict = ["no", "maybe", "yes"].includes(s.paid_cert_worth_it) ? s.paid_cert_worth_it : "maybe";
+    const label = { no: "Free is enough", maybe: "Cert maybe", yes: "Cert worth paying" }[verdict];
+    skills.append(el("div", { className: "skill" },
+      el("b", { textContent: s.name }), el("span", { className: "pill " + verdict, textContent: label }),
+      el("div", { textContent: s.why_it_matters || "" }),
+      el("div", { className: "muted", textContent: "Learn free: " + (s.free_way_to_learn || "") + " (about " + (s.est_hours || "?") + " hrs)" }),
+      el("div", { className: "muted", textContent: "Certificate: " + (s.cert_reason || "") })));
+  });
+  out.append(card("Skills to build, in order", skills));
+
+  const weeks = el("div");
+  (plan.plan_4_weeks || []).forEach((w) => {
+    weeks.append(el("p", {}, el("b", { textContent: "Week " + w.week + ": " }), String(w.focus || ""),
+      el("br"), el("span", { className: "muted", textContent: "You will have: " + (w.output || "") })));
+  });
+  out.append(card("Your 4-week plan", weeks));
+
+  const m = plan.money || {};
+  out.append(card("Money check",
+    el("p", { textContent: "If you spend nothing: " + (m.cost_if_free_only || "Rs 0") }),
+    el("p", { className: "muted", textContent: "Spend only if: " + (m.spend_only_if || "") })));
+
+  const q = card("Ask these before you pay anyone", list(plan.ask_before_you_pay));
+  const copy = el("button", { className: "ghost", textContent: "Copy these questions", type: "button" });
+  copy.onclick = () => {
+    navigator.clipboard?.writeText((plan.ask_before_you_pay || []).map((t, i) => (i + 1) + ". " + t).join("\n"));
+    copy.textContent = "Copied"; track("questions_copied");
+  };
+  q.append(copy);
+  out.append(q);
+
+  out.append(card("Proof that beats a certificate", el("p", { textContent: plan.proof_to_build || "" })));
+
+  const cta = el("a", { href: BEEP_URL, target: "_blank", rel: "noopener" });
+  const ctaBtn = el("button", { className: "primary", textContent: "Ready? See assessments on Beep", type: "button" });
+  cta.append(ctaBtn);
+  cta.addEventListener("click", () => track("cta_clicked"));
+  out.append(cta);
+
+  out.classList.remove("hidden");
+  out.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+$("form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const btn = $("go"), err = $("err");
+  err.classList.add("hidden");
+  btn.disabled = true; btn.textContent = "Thinking... (10-20 sec)";
+  try {
+    const r = await fetch("/api/plan", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        branch: $("branch").value, year: $("year").value, goal: $("goal").value, already_know: $("known").value,
+        budget: $("budget").value, hours: $("hours").value, language: $("language").value,
+      }),
+    });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error || "Something went wrong");
+    render(data.plan); // plan_generated is logged server-side in api/plan.js
+  } catch (ex) {
+    err.textContent = ex.message; err.classList.remove("hidden");
+  } finally {
+    btn.disabled = false; btn.textContent = "Get my honest path";
+  }
+});
+</script>
+</body>
+</html>
