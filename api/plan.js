@@ -113,8 +113,7 @@ module.exports = async function handler(req, res) {
       if (r.status === 429) {
         return res.status(429).json({ error: "The free AI quota is busy right now. Please try again in a minute." });
       }
-      return res.status(502).json({ error: "The AI service had a problem. Please try again." });
-    }
+      return res.status(502).json({ error: `Gemini ${r.status}: ${t.slice(0, 200)}` });    }
 
     const data = await r.json();
     const parts = data.candidates?.[0]?.content?.parts || [];
