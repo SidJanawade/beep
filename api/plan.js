@@ -1,7 +1,9 @@
-// POST /api/plan  -> asks Claude for an honest, free-first skill path for a student.
-// Runs as a Vercel serverless function. Needs env var ANTHROPIC_API_KEY.
+// POST /api/plan  -> asks an AI model for an honest, free-first skill path for a student.
+// Runs as a Vercel serverless function. Uses Google Gemini's free tier.
+// Needs env var GEMINI_API_KEY (free key from https://aistudio.google.com/apikey).
+// Optional env var GEMINI_MODEL if you want to switch models without changing code.
 
-const MODEL = process.env.ANTHROPIC_MODEL || "claude-sonnet-5-5";
+const MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
 
 // Very small in-memory rate limit (best effort: resets when the function cold-starts).
 const hits = new Map();
@@ -57,8 +59,8 @@ module.exports = async function handler(req, res) {
   res.setHeader("Cache-Control", "no-store");
   if (req.method !== "POST") return res.status(405).json({ error: "Use POST" });
 
-  if (!process.env.ANTHROPIC_API_KEY) {
-    return res.status(500).json({ error: "Server is missing ANTHROPIC_API_KEY" });
+  if (!process.env.GEMINI_API_KEY) {
+    return res.status(500).json({ error: "Server is missing GEMINI_API_KEY" });
   }
 
   const ip = String(req.headers["x-forwarded-for"] || "unknown").split(",")[0].trim();
@@ -89,29 +91,34 @@ module.exports = async function handler(req, res) {
     `- Reply language: ${student.language}`;
 
   try {
-    const r = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-api-key": process.env.ANTHROPIC_API_KEY,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({
-        model: MODEL,
-        max_tokens: 1800,
-        system: SYSTEM,
-        messages: [{ role: "user", content: userMsg }],
-      }),
-    });
+    const r = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(MODEL)}:generateContent`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-goog-api-key": process.env.GEMINI_API_KEY,
+        },
+        body: JSON.stringify({
+          systemInstruction: { parts: [{ text: SYSTEM }] },
+          contents: [{ role: "user", parts: [{ text: userMsg }] }],
+          generationConfig: { responseMimeType: "application/json", maxOutputTokens: 4096, temperature: 0.6 },
+        }),
+      }
+    );
 
     if (!r.ok) {
       const t = await r.text();
-      console.error("Anthropic error", r.status, t.slice(0, 300));
+      console.error("Gemini error", r.status, t.slice(0, 300));
+      if (r.status === 429) {
+        return res.status(429).json({ error: "The free AI quota is busy right now. Please try again in a minute." });
+      }
       return res.status(502).json({ error: "The AI service had a problem. Please try again." });
     }
 
     const data = await r.json();
-    const text = (data.content || []).map((b) => b.text || "").join("");
+    const parts = data.candidates?.[0]?.content?.parts || [];
+    const text = parts.map((p) => p.text || "").join("");
     const start = text.indexOf("{");
     const end = text.lastIndexOf("}");
     const plan = JSON.parse(text.slice(start, end + 1));
